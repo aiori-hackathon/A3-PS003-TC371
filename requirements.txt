@@ -1,0 +1,7 @@
+torch
+flwr
+pandas
+numpy
+matplotlib
+streamlit
+tables
