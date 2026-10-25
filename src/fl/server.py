@@ -30,6 +30,7 @@ def run_fedavg(
     shapes = [tuple(value.shape) for value in parameters]
     global_vector = flatten_parameters(parameters)
     rows: list[dict[str, float | int | str]] = []
+    cumulative_bytes_sent = 0
 
     for round_number in range(1, rounds + 1):
         cost = RoundCost()
@@ -59,6 +60,7 @@ def run_fedavg(
             set_parameters(model, parameters)
 
         metrics = [client.evaluate(model) for client in clients]
+        cumulative_bytes_sent += cost.bytes_sent
         rows.append(
             {
                 "method": "federated",
@@ -71,6 +73,8 @@ def run_fedavg(
                 "gated_clients": gated_clients,
                 "participating_clients": len(clients) - gated_clients,
                 "training_examples": total_examples,
+                "cumulative_bytes_sent": cumulative_bytes_sent,
+                "cumulative_mb": cumulative_bytes_sent / 1_000_000,
             }
         )
         print(

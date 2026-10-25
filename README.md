@@ -27,5 +27,14 @@ Aryas. Yuthika owns the federated learning code in `src/fl/` and writes
 Federated training uses a plain-Python FedAvg loop with 10 junction clients and
 15 rounds. Client updates use 8-bit quantization, retain the largest 25% of
 update values, and are gated when their L2 norm is below 0.05% of the global
-model's L2 norm. `bytes_sent` counts the serialized model broadcasts and client
-updates for each round; it excludes network-layer overhead.
+model's L2 norm. Federated `bytes_sent` is the per-round sum of serialized
+client-update payloads (uplink) and model payloads broadcast once per recipient
+(downlink). Serialized application headers and compression metadata are
+included; network transport overhead such as TCP/IP headers and retransmissions
+is excluded. `cumulative_bytes_sent` is the running total across rounds, and
+`cumulative_mb` uses decimal MB (bytes / 1,000,000).
+
+The centralized baseline's `bytes_sent` records the in-memory size of its
+training input and target arrays per epoch, not network communication. Do not
+compare it directly with federated network traffic. Local-only has no exchanged
+updates, while a standard uncompressed FedAvg result is not currently available.
