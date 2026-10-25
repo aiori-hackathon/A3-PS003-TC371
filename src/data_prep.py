@@ -9,7 +9,7 @@ NUM_JUNCTIONS = 10
 INPUT_STEPS = 12
 OUTPUT_STEPS = 3
 TRAIN_FRACTION = 0.8
-DATA_KIND = "flow"
+DATA_KIND = "speed"
 SEED = 42
 
 ROOT = Path(__file__).resolve().parents[1]
