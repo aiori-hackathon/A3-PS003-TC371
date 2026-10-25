@@ -83,17 +83,56 @@ def _show_costs() -> None:
     line = results.sort_values(["method", "round"])
     st.subheader("MAE by round")
     st.line_chart(line, x="round", y="MAE", color="method")
-    final = line.groupby("method", as_index=False).tail(1).copy()
-    final["total_MB"] = final["bytes_sent"] / (1024 * 1024)
-    final["accuracy-per-MB"] = final.apply(
-        lambda row: "n/a"
-        if row["total_MB"] == 0
-        else f"{1 / row['MAE'] / row['total_MB']:.4f}",
-        axis=1,
-    )
-    st.subheader("Final communication cost")
-    st.bar_chart(final.set_index("method")["total_MB"])
-    st.dataframe(final[["method", "MAE", "RMSE", "total_MB", "accuracy-per-MB"]], hide_index=True)
+    final_metrics = line.groupby("method", as_index=False).tail(1)
+    st.subheader("Final model metrics")
+    st.dataframe(final_metrics[["method", "MAE", "RMSE"]], hide_index=True)
+
+    if "federated" in set(line["method"]):
+        federated = line[line["method"] == "federated"].copy()
+        if "cumulative_bytes_sent" not in federated:
+            federated["cumulative_bytes_sent"] = federated["bytes_sent"].cumsum()
+        federated["round_MB"] = federated["bytes_sent"] / 1_000_000
+        federated["cumulative_MB"] = federated["cumulative_bytes_sent"] / 1_000_000
+        st.subheader("Compressed FedAvg communication cost per round")
+        st.caption("Serialized application payload bytes; decimal MB (1 MB = 1,000,000 bytes).")
+        st.line_chart(federated, x="round", y="round_MB")
+        st.subheader("Cumulative communication cost for the complete training run")
+        st.line_chart(federated, x="round", y="cumulative_MB")
+
+    network_methods = line[line["method"].isin(["federated", "local_only"])].copy()
+    if not network_methods.empty:
+        if "cumulative_bytes_sent" not in network_methods:
+            network_methods["cumulative_bytes_sent"] = (
+                network_methods.groupby("method")["bytes_sent"].cumsum()
+            )
+        else:
+            missing_cumulative = network_methods["cumulative_bytes_sent"].isna()
+            network_methods.loc[missing_cumulative, "cumulative_bytes_sent"] = (
+                network_methods.loc[missing_cumulative]
+                .groupby("method")["bytes_sent"]
+                .cumsum()
+            )
+        final = network_methods.groupby("method", as_index=False).tail(1).copy()
+        final["total_MB"] = final["cumulative_bytes_sent"] / 1_000_000
+        final["method"] = final["method"].replace(
+            {"federated": "Compressed FedAvg", "local_only": "Local-only"}
+        )
+        st.subheader("Comparable network communication totals")
+        st.bar_chart(final.set_index("method")["total_MB"])
+        st.dataframe(
+            final[["method", "cumulative_bytes_sent", "total_MB"]],
+            hide_index=True,
+        )
+
+    if "centralized" in set(line["method"]):
+        st.info(
+            "The centralized baseline's bytes_sent is the size of its in-memory "
+            "training input/target arrays per epoch, not network traffic; it is "
+            "not included in the network-cost comparison."
+        )
+    if "standard_fedavg" not in set(line["method"]):
+        st.info("No standard (uncompressed) FedAvg results are available to compare.")
+
     if not (RESULTS_DIR / "federated_results.csv").exists():
         st.info("Federated results are still pending.")
 
