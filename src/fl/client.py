@@ -26,6 +26,8 @@ from src.model import (
 class ClientUpdate:
     payload: bytes
     num_examples: int
+    method: str = "fedavg"
+    gated: bool = False
 
 
 class FederatedClient:
@@ -37,7 +39,14 @@ class FederatedClient:
         self.model: TrafficGRU = get_model()
         self._shapes = [tuple(value.shape) for value in get_parameters(self.model)]
 
-    def fit(self, global_model_payload: bytes) -> ClientUpdate:
+    def fit(
+        self,
+        global_model_payload: bytes,
+        *,
+        method: str = "fedavg",
+        top_k_fraction: float = TOP_K_FRACTION,
+        gate_threshold: float = GATE_THRESHOLD,
+    ) -> ClientUpdate:
         global_parameters = decode_model(global_model_payload, self._shapes)
         set_parameters(self.model, global_parameters)
         train(self.model, self.data["X_train"], self.data["y_train"])
@@ -52,10 +61,15 @@ class FederatedClient:
         payload = encode_update(
             delta_vector,
             float(np.linalg.norm(global_vector)),
-            top_k_fraction=TOP_K_FRACTION,
-            gate_threshold=GATE_THRESHOLD,
+            method=method,
+            top_k_fraction=top_k_fraction,
+            gate_threshold=gate_threshold,
         )
-        return ClientUpdate(payload=payload, num_examples=len(self.data["X_train"]))
+        gated = False
+        if len(payload) >= 17 and payload[:4] == b"CFU1":
+            magic, flags, total_size, count, scale = __import__("struct").unpack_from("!4sBII f", payload)
+            gated = bool(flags & 1)
+        return ClientUpdate(payload=payload, num_examples=len(self.data["X_train"]), method=method, gated=gated)
 
     def evaluate(self, model: TrafficGRU) -> dict[str, float]:
         """Evaluate a global model on this junction's held-out data."""

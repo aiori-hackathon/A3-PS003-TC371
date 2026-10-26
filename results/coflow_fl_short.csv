@@ -1,0 +1,3 @@
+method,round,MAE,RMSE,upload_bytes,download_bytes,bytes_sent,cumulative_bytes,communication_MB,cumulative_MB,num_clients,skipped_uploads,training_examples,participating_clients,participating_examples
+coflow_fl,1,10.170914506912231,12.277384662628174,43420,138680,182100,182100,0.1821,0.1821,10,0,68980,10,68980
+coflow_fl,2,6.647303581237793,8.443515968322753,43420,138680,182100,364200,0.1821,0.3642,10,0,68980,10,68980

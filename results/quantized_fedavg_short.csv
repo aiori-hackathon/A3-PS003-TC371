@@ -1,0 +1,3 @@
+method,round,MAE,RMSE,upload_bytes,download_bytes,bytes_sent,cumulative_bytes,communication_MB,cumulative_MB,num_clients,skipped_uploads,training_examples,participating_clients,participating_examples
+quantized_fedavg,1,2.900577735900879,3.648092436790466,34760,138680,173440,173440,0.17344,0.17344,10,0,68980,10,68980
+quantized_fedavg,2,2.8614599466323853,3.596856880187988,34760,138680,173440,346880,0.17344,0.34688,10,0,68980,10,68980
