@@ -52,6 +52,62 @@ class CompressionProtocolTests(unittest.TestCase):
         self.assertTrue(gated)
         np.testing.assert_array_equal(decoded, np.zeros_like(update))
 
+    def test_gating_keeps_updates_at_or_above_threshold(self):
+        update = np.array([0.5], dtype=np.float32)
+        payload = encode_update(
+            update,
+            model_norm=1.0,
+            method="gated_fedavg",
+            gate_threshold=0.5,
+        )
+        decoded, gated = decode_update(payload, update.size)
+        self.assertFalse(gated)
+        np.testing.assert_allclose(decoded, update)
+
+    def test_zero_model_norm_does_not_gate_nonzero_update(self):
+        update = np.array([1.0, -2.0], dtype=np.float32)
+        payload = encode_update(
+            update,
+            model_norm=0.0,
+            method="gated_fedavg",
+            gate_threshold=1e-5,
+        )
+        decoded, gated = decode_update(payload, update.size)
+        self.assertFalse(gated)
+        np.testing.assert_allclose(decoded, update)
+
+    def test_zero_quantized_update_is_not_mislabeled_as_gated(self):
+        update = np.zeros(3, dtype=np.float32)
+        payload = encode_update(
+            update,
+            model_norm=1.0,
+            method="quantized_fedavg",
+        )
+        decoded, gated = decode_update(payload, update.size)
+        self.assertFalse(gated)
+        np.testing.assert_array_equal(decoded, update)
+
+    def test_coflow_respects_zero_gate_threshold_for_zero_update(self):
+        update = np.zeros(3, dtype=np.float32)
+        payload = encode_update(
+            update,
+            model_norm=1.0,
+            method="coflow_fl",
+            gate_threshold=0.0,
+        )
+        decoded, gated = decode_update(payload, update.size)
+        self.assertFalse(gated)
+        np.testing.assert_array_equal(decoded, update)
+
+    def test_gate_threshold_must_be_finite(self):
+        with self.assertRaisesRegex(ValueError, "finite and non-negative"):
+            encode_update(
+                np.array([1.0], dtype=np.float32),
+                model_norm=1.0,
+                method="gated_fedavg",
+                gate_threshold=float("nan"),
+            )
+
     def test_flatten_unflatten_round_trip(self):
         parameters = [
             np.arange(6, dtype=np.float32).reshape(2, 3),

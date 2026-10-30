@@ -1,10 +1,12 @@
 """Plain-Python federated orchestration for all junction clients."""
 
+from collections.abc import Callable
+
 import numpy as np
 import pandas as pd
 
 from src.data_prep import NUM_JUNCTIONS
-from src.fl.client import FederatedClient
+from src.fl.client import ClientUpdateMetrics, FederatedClient
 from src.fl.compression import (
     GATE_THRESHOLD,
     TOP_K_FRACTION,
@@ -25,6 +27,7 @@ def _run_experiment(
     *,
     top_k_fraction: float = TOP_K_FRACTION,
     gate_threshold: float = GATE_THRESHOLD,
+    update_metrics_callback: Callable[[ClientUpdateMetrics], None] | None = None,
 ) -> tuple[pd.DataFrame, TrafficGRU]:
     """Train all junctions with a configurable federated update method."""
     if rounds < 1:
@@ -51,6 +54,8 @@ def _run_experiment(
                 method=method,
                 top_k_fraction=top_k_fraction,
                 gate_threshold=gate_threshold,
+                round_number=round_number,
+                update_metrics_callback=update_metrics_callback,
             )
             for client in clients
         ]
@@ -84,12 +89,16 @@ def _run_experiment(
             "RMSE": rmse,
             "upload_bytes": cost.uplink_bytes,
             "download_bytes": cost.downlink_bytes,
+            "uplink_bytes": cost.uplink_bytes,
+            "downlink_bytes": cost.downlink_bytes,
             "bytes_sent": cost.bytes_sent,
             "cumulative_bytes": cumulative_bytes_sent,
             "communication_MB": cost.bytes_sent / 1_000_000,
             "cumulative_MB": cumulative_bytes_sent / 1_000_000,
             "num_clients": len(clients),
+            "attempted_uploads": cost.attempted_uploads,
             "skipped_uploads": skipped_uploads,
+            "gate_threshold": gate_threshold,
             "training_examples": total_examples,
             "participating_clients": len(clients) - skipped_uploads,
             "participating_examples": participating_examples,
@@ -168,6 +177,7 @@ def run_coflow_fl(
     *,
     top_k_fraction: float = TOP_K_FRACTION,
     gate_threshold: float = GATE_THRESHOLD,
+    update_metrics_callback: Callable[[ClientUpdateMetrics], None] | None = None,
 ) -> tuple[pd.DataFrame, TrafficGRU]:
     """Train all junctions with the combined CoFlow-FL stack."""
     return _run_experiment(
@@ -175,4 +185,5 @@ def run_coflow_fl(
         rounds=rounds,
         top_k_fraction=top_k_fraction,
         gate_threshold=gate_threshold,
+        update_metrics_callback=update_metrics_callback,
     )

@@ -114,6 +114,10 @@ def _relative_norm(values: np.ndarray, model_norm: float) -> float:
     return 0.0 if update_norm == 0 else math.inf
 
 
+def _should_gate(method: str, relative_norm: float, gate_threshold: float) -> bool:
+    return method.lower() in {"gated_fedavg", "coflow_fl"} and relative_norm < gate_threshold
+
+
 def _pack_gated_update(values: np.ndarray, method: str) -> bytes:
     return UPDATE_HEADER.pack(UPDATE_MAGIC, _compose_flags(method, True), values.size, 0, 0.0)
 
@@ -159,8 +163,8 @@ def encode_update(
     normalized_method = method.lower()
     if not 0 < top_k_fraction <= 1:
         raise ValueError("top_k_fraction must be greater than 0 and at most 1.")
-    if gate_threshold < 0:
-        raise ValueError("gate_threshold must be non-negative.")
+    if not math.isfinite(gate_threshold) or gate_threshold < 0:
+        raise ValueError("gate_threshold must be finite and non-negative.")
 
     values = np.asarray(update, dtype=np.float32).reshape(-1)
     if values.size == 0:
@@ -169,8 +173,7 @@ def encode_update(
         raise ValueError("Updates and model norm must be finite.")
 
     relative_norm = _relative_norm(values, model_norm)
-    should_gate = normalized_method in {"gated_fedavg", "coflow_fl"} and relative_norm < gate_threshold
-    if should_gate or relative_norm == math.inf:
+    if _should_gate(normalized_method, relative_norm, gate_threshold):
         return _pack_gated_update(values, normalized_method)
 
     if normalized_method in {"fedavg", "gated_fedavg"}:
@@ -179,8 +182,6 @@ def encode_update(
 
     if normalized_method == "quantized_fedavg":
         quantized, scale = _quantize_values(values)
-        if scale == 0.0:
-            return _pack_gated_update(values, normalized_method)
         header = UPDATE_HEADER.pack(UPDATE_MAGIC, _compose_flags(normalized_method, False), values.size, values.size, scale)
         return header + quantized.tobytes()
 
@@ -196,8 +197,6 @@ def encode_update(
         if selected.size == 0:
             return _pack_gated_update(values, normalized_method)
         quantized, scale = _quantize_values(selected)
-        if scale == 0.0:
-            return _pack_gated_update(values, normalized_method)
         header = UPDATE_HEADER.pack(UPDATE_MAGIC, _compose_flags(normalized_method, False), values.size, selected.size, scale)
         return b"".join((header, indexes.astype("<u4", copy=False).tobytes(), quantized.tobytes()))
 

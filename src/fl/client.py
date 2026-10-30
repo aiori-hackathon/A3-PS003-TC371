@@ -1,6 +1,7 @@
 """One junction's local training and compressed update generation."""
 
 from dataclasses import dataclass
+from typing import Callable, TypedDict
 
 import numpy as np
 
@@ -8,6 +9,9 @@ from src.data_prep import load_junction
 from src.fl.compression import (
     GATE_THRESHOLD,
     TOP_K_FRACTION,
+    UPDATE_HEADER,
+    _relative_norm,
+    _should_gate,
     decode_model,
     encode_update,
     flatten_parameters,
@@ -20,6 +24,17 @@ from src.model import (
     set_parameters,
     train,
 )
+
+
+class ClientUpdateMetrics(TypedDict):
+    round: int
+    client_id: int
+    method: str
+    global_model_norm: float
+    client_update_norm: float
+    relative_update_norm: float
+    skipped: bool
+    gate_threshold: float
 
 
 @dataclass(frozen=True)
@@ -46,6 +61,8 @@ class FederatedClient:
         method: str = "fedavg",
         top_k_fraction: float = TOP_K_FRACTION,
         gate_threshold: float = GATE_THRESHOLD,
+        round_number: int | None = None,
+        update_metrics_callback: Callable[[ClientUpdateMetrics], None] | None = None,
     ) -> ClientUpdate:
         global_parameters = decode_model(global_model_payload, self._shapes)
         set_parameters(self.model, global_parameters)
@@ -58,18 +75,39 @@ class FederatedClient:
         ]
         global_vector = flatten_parameters(global_parameters)
         delta_vector = flatten_parameters(delta)
+        global_norm = float(np.linalg.norm(global_vector))
+        update_norm = float(np.linalg.norm(delta_vector))
+        relative_norm = _relative_norm(delta_vector, global_norm)
+        skipped = _should_gate(method, relative_norm, gate_threshold)
+        if update_metrics_callback is not None:
+            if round_number is None:
+                raise ValueError("round_number is required when logging client update metrics.")
+            update_metrics_callback(
+                {
+                    "round": round_number,
+                    "client_id": self.junction,
+                    "method": method,
+                    "global_model_norm": global_norm,
+                    "client_update_norm": update_norm,
+                    "relative_update_norm": relative_norm,
+                    "skipped": skipped,
+                    "gate_threshold": gate_threshold,
+                }
+            )
         payload = encode_update(
             delta_vector,
-            float(np.linalg.norm(global_vector)),
+            global_norm,
             method=method,
             top_k_fraction=top_k_fraction,
             gate_threshold=gate_threshold,
         )
-        gated = False
-        if len(payload) >= 17 and payload[:4] == b"CFU1":
-            magic, flags, total_size, count, scale = __import__("struct").unpack_from("!4sBII f", payload)
-            gated = bool(flags & 1)
-        return ClientUpdate(payload=payload, num_examples=len(self.data["X_train"]), method=method, gated=gated)
+        _, flags, _, _, _ = UPDATE_HEADER.unpack_from(payload)
+        return ClientUpdate(
+            payload=payload,
+            num_examples=len(self.data["X_train"]),
+            method=method,
+            gated=bool(flags & 1),
+        )
 
     def evaluate(self, model: TrafficGRU) -> dict[str, float]:
         """Evaluate a global model on this junction's held-out data."""

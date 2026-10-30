@@ -21,8 +21,11 @@ streamlit run src/dashboard/app.py
 ```
 
 The `src/` data preparation, model, baseline, and dashboard code is owned by
-Aryas. Yuthika owns the federated learning code in `src/fl/` and writes
-`results/federated_results.csv`.
+Aryas. Yuthika owns the federated learning code in `src/fl/`.
+`run_federated()` writes FedAvg results to `results/fedavg_results.csv`.
+`run_comparison()` writes the five-method comparison to
+`results/federated_comparison.csv` and writes its CoFlow-FL compatibility
+output to `results/federated_results.csv`.
 
 Federated training uses a plain-Python FedAvg loop with 10 junction clients and
 15 rounds. Client updates use 8-bit quantization, retain the largest 25% of
